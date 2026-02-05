@@ -1,55 +1,55 @@
 #Importa o modelo Transaction apenas para tipagem
 from backend.models.transaction import Transaction
-from backend.services.statistics_service import get_customer_statistics
+
+# Importa o serviço de estatísticas
+from backend.services.feature_service import extract_features
 
 def analyze_transaction(transaction: Transaction):
     """
-    Função responsável por analisar uma tranação
-    e decidir se ela parece fraudulenta.
+    Analisa uma transação usando features extraídas
     """
+
+    # Extrai as features da transação
+    features = extract_features(transaction)
+
     # Inicializa score de risco
     risk_score = 0
 
-    #Busca estatísticas do cliente
-    stats = get_customer_statistics(transaction.customer_id)
+    # Lista de motivos que explicam a decisão
+    reasons = []
 
-    mean_amount = stats["mean_amount"]
-    std_amount = stats["std_amount"]
-    total_transactions = stats["total_transactions"]
-
-    # Feature 0: pouco histórico
-    if total_transactions < 5:
+    # Regra 1: Pouco histórico
+    if features["total_transactions"] < 5:
         risk_score += 2
+        reasons.append("Customer has little transaction history")
 
-    # Feature 1: valor fora do padrão do cliente
-    if total_transactions >= 5 and std_amount > 0:
-        if transaction.amount > mean_amount + (2 * std_amount):
-            risk_score += 3
-
-    # Feature 2: valor absoluto alto
-    if transaction.amount > 1000:
-        risk_score += 2
-
-    # Feature 3: transação online
-    if transaction.is_online:
+    # Regra 2: Transação online
+    if features["is_online"]:
         risk_score += 1
+        reasons.append("Online transaction increases risk")
 
-    # Feature 4: combinação perigosa
-    if transaction.amount > 1000 and transaction.is_online:
-        risk_score += 2
-    
+    # Regra 3: estatística robusta (IQR)
+    if features["above_iqr_limit"]:
+        risk_score += 3
+        reasons.append("Transaction detected as outlier using IQR")
+
+    # Regra 4: valor absoluto muito alto (regra de negócio)
+    if features["very_high_amount"]:
+        risk_score += 3
+        reasons.append("Very high absolute transaction value")
 
     # Decisão final
     if risk_score >= 5:
         return {
             "fraud": True,
             "risk_score": risk_score,
-            "reason": "Transaction classified as high risk using customer statistics"
+            "reason": " | ".join(reasons),
+            "feature_used" : features
         }
-    # Caso contrário, considera normal
+
     return {
         "fraud": False,
         "risk_score": risk_score,
-        "reason": "Transaction classified as low risk using customer statistics"
+        "reason": " | ".join(reasons),
+        "feature_used" : features
     }
-    
